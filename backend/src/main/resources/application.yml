@@ -1,0 +1,19 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: code-generator
+  servlet:
+    multipart:
+      max-file-size: 10MB
+
+mybatis-plus:
+  configuration:
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+
+generator:
+  config:
+    path: ./config.json
+  template:
+    path: ./templates/
