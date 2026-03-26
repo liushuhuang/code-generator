@@ -5,10 +5,35 @@
         <span class="logo-text">Code Generator</span>
       </div>
       <div class="header-actions">
+        <el-dropdown trigger="click">
+          <el-button>
+            <el-icon><Download /></el-icon>
+            导入/导出
+          </el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item @click="exportConfig">
+                <el-icon><Download /></el-icon>
+                导出配置
+              </el-dropdown-item>
+              <el-dropdown-item @click="triggerImport">
+                <el-icon><Upload /></el-icon>
+                导入配置
+              </el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
         <el-button @click="showSettings = true" circle>
           <el-icon><Setting /></el-icon>
         </el-button>
       </div>
+      <input 
+        type="file" 
+        ref="importInput" 
+        style="display: none" 
+        accept=".json"
+        @change="handleImport"
+      />
     </header>
     
     <main class="app-main">
@@ -57,17 +82,28 @@
             该连接未配置数据库，请点击编辑补充
           </div>
           <div v-else class="table-list">
-            <el-checkbox-group v-model="selectedTables">
-              <div v-for="table in tables" :key="table.tableName" class="table-item">
-                <el-checkbox :value="table.tableName">
-                  <span class="table-name">{{ table.tableName }}</span>
-                  <span v-if="table.tableComment" class="table-comment">{{ table.tableComment }}</span>
-                </el-checkbox>
-              </div>
-            </el-checkbox-group>
+            <div v-for="table in tables" :key="table.tableName" class="table-item">
+              <el-checkbox 
+                :value="table.tableName" 
+                v-model="selectedTables"
+                @change="onTableSelectChange(table.tableName, $event)"
+              >
+                <span class="table-name">{{ table.tableName }}</span>
+                <span v-if="table.tableComment" class="table-comment">{{ table.tableComment }}</span>
+              </el-checkbox>
+              <el-button 
+                size="small" 
+                text 
+                type="primary"
+                @click="openFieldConfig(table.tableName)"
+              >
+                配置
+              </el-button>
+            </div>
           </div>
           <div v-if="selectedTables.length > 0" class="selected-count">
             已选择 {{ selectedTables.length }} 张表
+            <span v-if="configuredCount > 0">，已配置 {{ configuredCount }} 张</span>
           </div>
         </div>
       </aside>
@@ -76,6 +112,7 @@
         <PreviewArea 
           :connection-id="selectedConnectionId"
           :selected-tables="selectedTables"
+          :table-configs="tableConfigs"
           :settings="settings"
         />
       </section>
@@ -117,31 +154,115 @@
     <el-dialog 
       v-model="showSettings" 
       title="生成设置" 
-      width="450px"
+      width="550px"
     >
-      <el-form label-width="80px">
+      <el-form label-width="100px">
+        <el-divider content-position="left">基础配置</el-divider>
         <el-form-item label="基础包名">
-          <el-input v-model="settings.basePackage" />
+          <el-input v-model="settings.basePackage" placeholder="com.example.generator" />
         </el-form-item>
         <el-form-item label="作者">
-          <el-input v-model="settings.author" />
+          <el-input v-model="settings.author" placeholder="作者名称" />
         </el-form-item>
         <el-form-item label="输出目录">
           <el-input v-model="settings.outputDir" placeholder="留空则使用ZIP下载" />
         </el-form-item>
+        
+        <el-divider content-position="left">ORM 框架</el-divider>
+        <el-form-item label="框架类型">
+          <el-radio-group v-model="settings.ormType">
+            <el-radio value="mybatis-plus">MyBatis-Plus</el-radio>
+            <el-radio value="mybatis">MyBatis</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <div class="orm-tip">
+          <template v-if="settings.ormType === 'mybatis-plus'">
+            使用 MyBatis-Plus 增强，生成 BaseMapper、IService 等
+          </template>
+          <template v-else>
+            使用原生 MyBatis，生成 Mapper 接口和 XML 映射文件
+          </template>
+        </div>
+        
+        <el-divider content-position="left">代码风格</el-divider>
+        <el-row :gutter="20">
+          <el-col :span="12">
+            <el-form-item label="Lombok">
+              <el-switch v-model="settings.enableLombok" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="Swagger">
+              <el-switch v-model="settings.enableSwagger" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-row :gutter="20">
+          <el-col :span="12">
+            <el-form-item label="验证注解">
+              <el-switch v-model="settings.enableValidation" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="链式调用">
+              <el-switch v-model="settings.enableChain" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-row :gutter="20">
+          <el-col :span="12">
+            <el-form-item label="序列化">
+              <el-switch v-model="settings.serializable" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="日期类型">
+              <el-select v-model="settings.dateType" style="width: 100%">
+                <el-option value="LocalDateTime" label="LocalDateTime" />
+                <el-option value="Date" label="Date" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+        </el-row>
+        
+        <el-divider content-position="left">命名策略</el-divider>
+        <el-form-item label="移除表前缀">
+          <el-input v-model="settings.removeTablePrefix" placeholder="如 t_,sys_ 多个用逗号分隔" />
+        </el-form-item>
+        <el-row :gutter="20">
+          <el-col :span="12">
+            <el-form-item label="实体前缀">
+              <el-input v-model="settings.entityPrefix" placeholder="如 Sys" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="实体后缀">
+              <el-input v-model="settings.entitySuffix" placeholder="如 Entity" />
+            </el-form-item>
+          </el-col>
+        </el-row>
       </el-form>
       <template #footer>
         <el-button type="primary" @click="showSettings = false">确定</el-button>
       </template>
     </el-dialog>
+    
+    <FieldConfigDialog
+      v-model:visible="showFieldConfig"
+      :connection-id="selectedConnectionId"
+      :table-name="currentConfigTable"
+      :config="currentTableConfig"
+      @confirm="saveFieldConfig"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox, FormInstance, FormRules } from 'element-plus'
-import { Setting, Plus, Edit, Delete, WarningFilled } from '@element-plus/icons-vue'
+import { Setting, Plus, Edit, Delete, WarningFilled, Download, Upload } from '@element-plus/icons-vue'
 import PreviewArea from '@/components/PreviewArea.vue'
+import FieldConfigDialog from '@/components/FieldConfigDialog.vue'
 import axios from 'axios'
 
 interface Connection {
@@ -159,16 +280,28 @@ interface TableInfo {
   tableComment: string
 }
 
+interface TableConfig {
+  tableName: string
+  selectedFields: string[]
+  generateVO: boolean
+  generateDTO: boolean
+  generateQuery: boolean
+}
+
 const formRef = ref<FormInstance>()
+const importInput = ref<HTMLInputElement>()
 const connections = ref<Connection[]>([])
 const selectedConnectionId = ref('')
 const tables = ref<TableInfo[]>([])
 const selectedTables = ref<string[]>([])
 const showConnectionDialog = ref(false)
 const showSettings = ref(false)
+const showFieldConfig = ref(false)
 const testing = ref(false)
 const saving = ref(false)
 const isEditMode = ref(false)
+const currentConfigTable = ref('')
+const tableConfigs = ref<Map<string, TableConfig>>(new Map())
 
 const connectionForm = ref<Connection>({
   id: '',
@@ -183,7 +316,18 @@ const connectionForm = ref<Connection>({
 const settings = ref({
   basePackage: 'com.example.generator',
   author: 'generator',
-  outputDir: ''
+  outputDir: '',
+  ormType: 'mybatis-plus',
+  enableLombok: true,
+  enableSwagger: false,
+  enableValidation: false,
+  enableChain: false,
+  serializable: true,
+  dateType: 'LocalDateTime',
+  entityPrefix: '',
+  entitySuffix: '',
+  removeTablePrefix: '',
+  namingStrategy: 'camelCase'
 })
 
 const formRules: FormRules = {
@@ -205,6 +349,20 @@ const currentConnection = computed(() => {
   return connections.value.find(c => c.id === selectedConnectionId.value)
 })
 
+const currentTableConfig = computed(() => {
+  return tableConfigs.value.get(currentConfigTable.value)
+})
+
+const configuredCount = computed(() => {
+  let count = 0
+  for (const tableName of selectedTables.value) {
+    if (tableConfigs.value.has(tableName)) {
+      count++
+    }
+  }
+  return count
+})
+
 const loadConnections = async () => {
   try {
     const { data } = await axios.get('/api/connection/list')
@@ -219,6 +377,7 @@ const loadConnections = async () => {
 const selectConnection = async (conn: Connection) => {
   selectedConnectionId.value = conn.id
   selectedTables.value = []
+  tableConfigs.value.clear()
   
   if (!conn.database) {
     tables.value = []
@@ -234,6 +393,24 @@ const selectConnection = async (conn: Connection) => {
     }
   } catch (error) {
     ElMessage.error('获取表列表失败')
+  }
+}
+
+const onTableSelectChange = (tableName: string, selected: boolean) => {
+  if (!selected) {
+    tableConfigs.value.delete(tableName)
+  }
+}
+
+const openFieldConfig = (tableName: string) => {
+  currentConfigTable.value = tableName
+  showFieldConfig.value = true
+}
+
+const saveFieldConfig = (config: TableConfig) => {
+  tableConfigs.value.set(config.tableName, config)
+  if (!selectedTables.value.includes(config.tableName)) {
+    selectedTables.value.push(config.tableName)
   }
 }
 
@@ -270,6 +447,7 @@ const deleteConnection = async (conn: Connection) => {
       selectedConnectionId.value = ''
       tables.value = []
       selectedTables.value = []
+      tableConfigs.value.clear()
     }
     ElMessage.success('删除成功')
   } catch (error) {
@@ -312,6 +490,53 @@ const saveConnection = async () => {
     ElMessage.error('保存失败')
   } finally {
     saving.value = false
+  }
+}
+
+const exportConfig = async () => {
+  try {
+    const response = await axios.get('/api/config/export', { responseType: 'blob' })
+    const url = window.URL.createObjectURL(new Blob([response.data]))
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', 'generator-config.json')
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+    ElMessage.success('导出成功')
+  } catch (error) {
+    ElMessage.error('导出失败')
+  }
+}
+
+const triggerImport = () => {
+  importInput.value?.click()
+}
+
+const handleImport = async (event: Event) => {
+  const file = (event.target as HTMLInputElement).files?.[0]
+  if (!file) return
+  
+  const formData = new FormData()
+  formData.append('file', file)
+  
+  try {
+    const { data } = await axios.post('/api/config/import', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+    if (data.code === 200) {
+      await loadConnections()
+      ElMessage.success('导入成功')
+    } else {
+      ElMessage.error(data.message || '导入失败')
+    }
+  } catch (error) {
+    ElMessage.error('导入失败')
+  } finally {
+    if (importInput.value) {
+      importInput.value.value = ''
+    }
   }
 }
 
@@ -476,6 +701,9 @@ onMounted(() => {
 }
 
 .table-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   padding: 8px 12px;
   background: #f5f7fa;
   border-radius: 6px;
@@ -510,5 +738,15 @@ onMounted(() => {
   border-radius: 8px;
   overflow: hidden;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.orm-tip {
+  padding: 8px 12px;
+  background: #f5f7fa;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #606266;
+  margin-top: -12px;
+  margin-bottom: 16px;
 }
 </style>

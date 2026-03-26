@@ -3,7 +3,7 @@
     <div class="preview-header">
       <div class="preview-tabs">
         <button 
-          v-for="tab in tabs" 
+          v-for="tab in currentTabs" 
           :key="tab.key"
           class="tab"
           :class="{ active: activeTab === tab.key }"
@@ -41,7 +41,6 @@
       </el-button>
     </div>
     
-    <!-- 模板编辑对话框 -->
     <el-dialog 
       v-model="showTemplateEditor" 
       title="编辑模板" 
@@ -51,11 +50,13 @@
       <div class="template-editor">
         <div class="template-type-selector">
           <el-radio-group v-model="currentTemplateType" @change="loadTemplateContent">
-            <el-radio-button value="entity">Entity</el-radio-button>
-            <el-radio-button value="mapper">Mapper</el-radio-button>
-            <el-radio-button value="service">Service</el-radio-button>
-            <el-radio-button value="serviceImpl">ServiceImpl</el-radio-button>
-            <el-radio-button value="controller">Controller</el-radio-button>
+            <el-radio-button 
+              v-for="tab in allTemplateTabs" 
+              :key="tab.key" 
+              :value="tab.key"
+            >
+              {{ tab.label }}
+            </el-radio-button>
           </el-radio-group>
         </div>
         <div class="template-editor-container">
@@ -76,27 +77,80 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Edit } from '@element-plus/icons-vue'
 import axios from 'axios'
 
+interface TableConfig {
+  tableName: string
+  selectedFields: string[]
+  generateVO: boolean
+  generateDTO: boolean
+  generateQuery: boolean
+}
+
 const props = defineProps<{
   connectionId: string
   selectedTables: string[]
+  tableConfigs: Map<string, TableConfig>
   settings: {
     basePackage: string
     author: string
     outputDir: string
+    ormType: string
+    enableLombok: boolean
+    enableSwagger: boolean
+    enableValidation: boolean
+    enableChain: boolean
+    serializable: boolean
+    dateType: string
+    entityPrefix: string
+    entitySuffix: string
+    removeTablePrefix: string
+    namingStrategy: string
   }
 }>()
 
-const tabs = [
+const mybatisPlusTabs = [
   { key: 'entity', label: 'Entity' },
   { key: 'mapper', label: 'Mapper' },
   { key: 'service', label: 'Service' },
   { key: 'controller', label: 'Controller' }
 ]
+
+const mybatisTabs = [
+  { key: 'entity', label: 'Entity' },
+  { key: 'mapper', label: 'Mapper' },
+  { key: 'mapperXml', label: 'MapperXML' },
+  { key: 'service', label: 'Service' },
+  { key: 'controller', label: 'Controller' }
+]
+
+const extraTabs = [
+  { key: 'vo', label: 'VO' },
+  { key: 'dto', label: 'DTO' },
+  { key: 'query', label: 'Query' }
+]
+
+const currentTabs = computed(() => {
+  let tabs = props.settings.ormType === 'mybatis' ? mybatisTabs : mybatisPlusTabs
+  
+  const hasVO = Array.from(props.tableConfigs.values()).some(c => c.generateVO)
+  const hasDTO = Array.from(props.tableConfigs.values()).some(c => c.generateDTO)
+  const hasQuery = Array.from(props.tableConfigs.values()).some(c => c.generateQuery)
+  
+  if (hasVO) tabs = [...tabs, extraTabs[0]]
+  if (hasDTO) tabs = [...tabs, extraTabs[1]]
+  if (hasQuery) tabs = [...tabs, extraTabs[2]]
+  
+  return tabs
+})
+
+const allTemplateTabs = computed(() => {
+  let tabs = props.settings.ormType === 'mybatis' ? [...mybatisTabs] : [...mybatisPlusTabs]
+  return [...tabs, ...extraTabs]
+})
 
 const activeTab = ref('entity')
 const loading = ref(false)
@@ -104,11 +158,18 @@ const hasPreview = ref(false)
 const previewResults: any = ref([])
 const editorContent = ref('// 选择表并点击生成预览查看代码')
 
-// 模板编辑相关
 const showTemplateEditor = ref(false)
 const currentTemplateType = ref('entity')
 const templateContent = ref('')
 const savingTemplate = ref(false)
+
+watch(() => props.settings.ormType, () => {
+  activeTab.value = 'entity'
+})
+
+const getTableConfigsArray = (): TableConfig[] => {
+  return Array.from(props.tableConfigs.values())
+}
 
 const generatePreview = async () => {
   if (!props.connectionId) {
@@ -125,9 +186,21 @@ const generatePreview = async () => {
   try {
     const { data } = await axios.post('/api/generate/preview', {
       connectionId: props.connectionId,
+      ormType: props.settings.ormType,
       tableNames: props.selectedTables,
+      tableConfigs: getTableConfigsArray(),
       basePackage: props.settings.basePackage,
-      author: props.settings.author
+      author: props.settings.author,
+      enableLombok: props.settings.enableLombok,
+      enableSwagger: props.settings.enableSwagger,
+      enableValidation: props.settings.enableValidation,
+      enableChain: props.settings.enableChain,
+      serializable: props.settings.serializable,
+      dateType: props.settings.dateType,
+      entityPrefix: props.settings.entityPrefix,
+      entitySuffix: props.settings.entitySuffix,
+      removeTablePrefix: props.settings.removeTablePrefix,
+      namingStrategy: props.settings.namingStrategy
     })
     if (data.code === 200) {
       previewResults.value = data.data || []
@@ -155,9 +228,21 @@ const downloadZip = async () => {
   try {
     const response = await axios.post('/api/generate/export', {
       connectionId: props.connectionId,
+      ormType: props.settings.ormType,
       tableNames: props.selectedTables,
+      tableConfigs: getTableConfigsArray(),
       basePackage: props.settings.basePackage,
-      author: props.settings.author
+      author: props.settings.author,
+      enableLombok: props.settings.enableLombok,
+      enableSwagger: props.settings.enableSwagger,
+      enableValidation: props.settings.enableValidation,
+      enableChain: props.settings.enableChain,
+      serializable: props.settings.serializable,
+      dateType: props.settings.dateType,
+      entityPrefix: props.settings.entityPrefix,
+      entitySuffix: props.settings.entitySuffix,
+      removeTablePrefix: props.settings.removeTablePrefix,
+      namingStrategy: props.settings.namingStrategy
     }, { responseType: 'blob' })
     
     const url = window.URL.createObjectURL(new Blob([response.data]))
@@ -184,10 +269,22 @@ const generateToDir = async () => {
   try {
     const { data } = await axios.post('/api/generate/to-dir', {
       connectionId: props.connectionId,
+      ormType: props.settings.ormType,
       tableNames: props.selectedTables,
+      tableConfigs: getTableConfigsArray(),
       basePackage: props.settings.basePackage,
       author: props.settings.author,
-      outputPath: props.settings.outputDir
+      outputPath: props.settings.outputDir,
+      enableLombok: props.settings.enableLombok,
+      enableSwagger: props.settings.enableSwagger,
+      enableValidation: props.settings.enableValidation,
+      enableChain: props.settings.enableChain,
+      serializable: props.settings.serializable,
+      dateType: props.settings.dateType,
+      entityPrefix: props.settings.entityPrefix,
+      entitySuffix: props.settings.entitySuffix,
+      removeTablePrefix: props.settings.removeTablePrefix,
+      namingStrategy: props.settings.namingStrategy
     })
     if (data.code === 200) {
       ElMessage.success('生成成功')
@@ -199,15 +296,22 @@ const generateToDir = async () => {
   }
 }
 
-// 模板编辑功能
 const openTemplateEditor = async () => {
   showTemplateEditor.value = true
   await loadTemplateContent()
 }
 
+const getTemplateGroup = (templateName: string): string => {
+  if (['vo', 'dto', 'query'].includes(templateName)) {
+    return 'common'
+  }
+  return props.settings.ormType
+}
+
 const loadTemplateContent = async () => {
+  const group = getTemplateGroup(currentTemplateType.value)
   try {
-    const { data } = await axios.get(`/api/template/${currentTemplateType.value}`)
+    const { data } = await axios.get(`/api/template/${group}/${currentTemplateType.value}`)
     if (data.code === 200) {
       templateContent.value = data.data || ''
     } else {
@@ -220,8 +324,10 @@ const loadTemplateContent = async () => {
 
 const saveTemplate = async () => {
   savingTemplate.value = true
+  const group = getTemplateGroup(currentTemplateType.value)
   try {
     const { data } = await axios.post('/api/template/save', {
+      ormType: group,
       name: currentTemplateType.value,
       content: templateContent.value
     })
@@ -242,7 +348,8 @@ const resetTemplate = async () => {
     await ElMessageBox.confirm('确定要将模板重置为默认吗？', '确认重置', {
       type: 'warning'
     })
-    const { data } = await axios.post(`/api/template/reset/${currentTemplateType.value}`)
+    const group = getTemplateGroup(currentTemplateType.value)
+    const { data } = await axios.post(`/api/template/reset/${group}/${currentTemplateType.value}`)
     if (data.code === 200) {
       await loadTemplateContent()
       ElMessage.success('重置成功')

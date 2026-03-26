@@ -22,22 +22,12 @@ public class GeneratorController {
     
     @PostMapping("/preview")
     public Result<List<PreviewResult>> preview(@RequestBody GenerateRequest request) {
-        return Result.success(generatorService.preview(
-                request.getConnectionId(),
-                request.getTableNames(),
-                request.getBasePackage(),
-                request.getAuthor()
-        ));
+        return Result.success(generatorService.preview(request));
     }
     
     @PostMapping("/export")
     public ResponseEntity<byte[]> export(@RequestBody GenerateRequest request) {
-        byte[] zip = generatorService.exportZip(
-                request.getConnectionId(),
-                request.getTableNames(),
-                request.getBasePackage(),
-                request.getAuthor()
-        );
+        byte[] zip = generatorService.exportZip(request);
         
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=code.zip")
@@ -47,12 +37,6 @@ public class GeneratorController {
     
     @PostMapping("/to-dir")
     public Result<GenerateResult> generateToDir(@RequestBody GenerateRequest request) {
-        return Result.success(generatorService.generateToDir(
-                request.getConnectionId(),
-                request.getTableNames(),
-                request.getBasePackage(),
-                request.getAuthor(),
-                request.getOutputPath()
-        ));
+        return Result.success(generatorService.generateToDir(request));
     }
 }

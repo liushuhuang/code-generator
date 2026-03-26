@@ -15,14 +15,14 @@ public class TemplateController {
     
     private final TemplateService templateService;
     
-    @GetMapping("/list")
-    public Result<List<String>> list() {
-        return Result.success(templateService.listTemplates());
+    @GetMapping("/types")
+    public Result<List<String>> getTemplateTypes(@RequestParam(required = false, defaultValue = "mybatis-plus") String ormType) {
+        return Result.success(templateService.getTemplateTypes(ormType));
     }
     
-    @GetMapping("/{name}")
-    public Result<String> get(@PathVariable String name) {
-        String content = templateService.getTemplate(name);
+    @GetMapping("/{ormType}/{name}")
+    public Result<String> get(@PathVariable String ormType, @PathVariable String name) {
+        String content = templateService.getTemplate(ormType, name);
         if (content == null) {
             return Result.error(404, "模板不存在");
         }
@@ -31,15 +31,16 @@ public class TemplateController {
     
     @PostMapping("/save")
     public Result<Void> save(@RequestBody Map<String, String> body) {
+        String ormType = body.getOrDefault("ormType", TemplateService.ORM_MYBATIS_PLUS);
         String name = body.get("name");
         String content = body.get("content");
-        templateService.saveTemplate(name, content);
+        templateService.saveTemplate(ormType, name, content);
         return Result.success();
     }
     
-    @PostMapping("/reset/{name}")
-    public Result<Void> reset(@PathVariable String name) {
-        templateService.resetTemplate(name);
+    @PostMapping("/reset/{ormType}/{name}")
+    public Result<Void> reset(@PathVariable String ormType, @PathVariable String name) {
+        templateService.resetTemplate(ormType, name);
         return Result.success();
     }
 }

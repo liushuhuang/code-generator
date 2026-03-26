@@ -2,6 +2,7 @@ package com.example.generator.controller;
 
 import com.example.generator.common.Result;
 import com.example.generator.model.TableInfo;
+import com.example.generator.model.ColumnInfo;
 import com.example.generator.model.ConnectionConfig;
 import com.example.generator.service.ConfigService;
 import com.example.generator.service.DatabaseService;
@@ -34,5 +35,14 @@ public class DatabaseController {
             return Result.error(404, "连接配置不存在");
         }
         return Result.success(databaseService.getTableInfo(config, tableName));
+    }
+    
+    @GetMapping("/columns")
+    public Result<List<ColumnInfo>> listColumns(@RequestParam String connectionId, @RequestParam String tableName) {
+        ConnectionConfig config = configService.getConnection(connectionId);
+        if (config == null) {
+            return Result.error(404, "连接配置不存在");
+        }
+        return Result.success(databaseService.listColumns(config, tableName));
     }
 }

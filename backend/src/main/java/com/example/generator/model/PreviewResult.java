@@ -7,4 +7,5 @@ public class PreviewResult {
     private String fileName;
     private String content;
     private String type;
+    private String templateGroup;
 }
