@@ -65,6 +65,11 @@ public class TemplateService {
                 "<#list imports as import>\n" +
                 "import ${import};\n" +
                 "</#list>\n" +
+                "<#if enumConfigs?? && enumConfigs?size gt 0>\n" +
+                "<#list enumConfigs as ec>\n" +
+                "import ${packageName}.enums.${ec.enumName};\n" +
+                "</#list>\n" +
+                "</#if>\n" +
                 "\n" +
                 "/**\n" +
                 " * ${tableComment}\n" +
@@ -96,8 +101,29 @@ public class TemplateService {
                 "    <#if column.primaryKey>\n" +
                 "    @TableId(type = IdType.AUTO)\n" +
                 "    </#if>\n" +
+                "    <#if enumMap?? && enumMap[column.columnName]??>\n" +
+                "    private ${enumMap[column.columnName]} ${column.fieldName};\n" +
+                "    <#else>\n" +
                 "    private ${column.javaType} ${column.fieldName};\n" +
+                "    </#if>\n" +
                 "</#list>\n" +
+                "<#if relations?? && relations?size gt 0>\n" +
+                "\n" +
+                "    // 关联对象\n" +
+                "<#list relations as rel>\n" +
+                "    /**\n" +
+                "     * 关联${rel.targetTable}\n" +
+                "     */\n" +
+                "    <#if rel.relationType == 'ONE_TO_ONE'>\n" +
+                "    @TableField(exist = false)\n" +
+                "    private ${rel.targetTable?cap_first} ${rel.fieldName};\n" +
+                "    </#if>\n" +
+                "    <#if rel.relationType == 'ONE_TO_MANY'>\n" +
+                "    @TableField(exist = false)\n" +
+                "    private java.util.List<${rel.targetTable?cap_first}> ${rel.fieldName};\n" +
+                "    </#if>\n" +
+                "</#list>\n" +
+                "</#if>\n" +
                 "}\n");
         
         mybatisPlusTemplates.put("mapper",
@@ -120,8 +146,12 @@ public class TemplateService {
         mybatisPlusTemplates.put("service",
                 "package ${packageName}.service;\n" +
                 "\n" +
+                "import com.baomidou.mybatisplus.extension.plugins.pagination.Page;\n" +
                 "import com.baomidou.mybatisplus.extension.service.IService;\n" +
                 "import ${packageName}.entity.${className};\n" +
+                "<#if queryFields?? && queryFields?size gt 0>\n" +
+                "import ${packageName}.query.${className}Query;\n" +
+                "</#if>\n" +
                 "\n" +
                 "/**\n" +
                 " * ${tableComment} Service 接口\n" +
@@ -130,15 +160,43 @@ public class TemplateService {
                 " * @date ${date}\n" +
                 " */\n" +
                 "public interface ${className}Service extends IService<${className}> {\n" +
+                "<#if queryFields?? && queryFields?size gt 0>\n" +
+                "\n" +
+                "    /**\n" +
+                "     * 分页查询\n" +
+                "     */\n" +
+                "    Page<${className}> queryPage(${className}Query query);\n" +
+                "</#if>\n" +
+                "<#if customMethods?? && customMethods?size gt 0>\n" +
+                "<#list customMethods as method>\n" +
+                "\n" +
+                "    /**\n" +
+                "     * ${method.description!method.methodName}\n" +
+                "     */\n" +
+                "    <#if method.methodType == 'SINGLE'>${className} ${method.methodName}(<#list method.params as param>${param.paramType} ${param.paramName}<#if param_has_next>, </#if></#list>);</#if>\n" +
+                "    <#if method.methodType == 'LIST'>java.util.List<${className}> ${method.methodName}(<#list method.params as param>${param.paramType} ${param.paramName}<#if param_has_next>, </#if></#list>);</#if>\n" +
+                "    <#if method.methodType == 'PAGE'>Page<${className}> ${method.methodName}(<#list method.params as param>${param.paramType} ${param.paramName}<#if param_has_next>, </#if></#list>);</#if>\n" +
+                "    <#if method.methodType == 'COUNT'>int ${method.methodName}(<#list method.params as param>${param.paramType} ${param.paramName}<#if param_has_next>, </#if></#list>);</#if>\n" +
+                "    <#if method.methodType == 'EXISTS'>boolean ${method.methodName}(<#list method.params as param>${param.paramType} ${param.paramName}<#if param_has_next>, </#if></#list>);</#if>\n" +
+                "    <#if method.methodType == 'DELETE'>boolean ${method.methodName}(<#list method.params as param>${param.paramType} ${param.paramName}<#if param_has_next>, </#if></#list>);</#if>\n" +
+                "    <#if method.methodType == 'UPDATE'>boolean ${method.methodName}(<#list method.params as param>${param.paramType} ${param.paramName}<#if param_has_next>, </#if></#list>);</#if>\n" +
+                "</#list>\n" +
+                "</#if>\n" +
                 "}\n");
         
         mybatisPlusTemplates.put("serviceImpl",
                 "package ${packageName}.service.impl;\n" +
                 "\n" +
+                "import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;\n" +
+                "import com.baomidou.mybatisplus.extension.plugins.pagination.Page;\n" +
                 "import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;\n" +
                 "import ${packageName}.entity.${className};\n" +
                 "import ${packageName}.mapper.${className}Mapper;\n" +
                 "import ${packageName}.service.${className}Service;\n" +
+                "<#if queryFields?? && queryFields?size gt 0>\n" +
+                "import ${packageName}.query.${className}Query;\n" +
+                "import cn.hutool.core.util.StrUtil;\n" +
+                "</#if>\n" +
                 "import org.springframework.stereotype.Service;\n" +
                 "\n" +
                 "/**\n" +
@@ -149,6 +207,78 @@ public class TemplateService {
                 " */\n" +
                 "@Service\n" +
                 "public class ${className}ServiceImpl extends ServiceImpl<${className}Mapper, ${className}> implements ${className}Service {\n" +
+                "<#if queryFields?? && queryFields?size gt 0>\n" +
+                "\n" +
+                "    @Override\n" +
+                "    public Page<${className}> queryPage(${className}Query query) {\n" +
+                "        LambdaQueryWrapper<${className}> wrapper = new LambdaQueryWrapper<>();\n" +
+                "<#list queryFields as qf>\n" +
+                "        <#if qf.queryType == 'EQ'>\n" +
+                "        if (query.get${qf.fieldName?cap_first}() != null) {\n" +
+                "            wrapper.eq(${className}::get${qf.fieldName?cap_first}, query.get${qf.fieldName?cap_first}());\n" +
+                "        }\n" +
+                "        </#if>\n" +
+                "        <#if qf.queryType == 'LIKE'>\n" +
+                "        if (StrUtil.isNotBlank(query.get${qf.fieldName?cap_first}())) {\n" +
+                "            wrapper.like(${className}::get${qf.fieldName?cap_first}, query.get${qf.fieldName?cap_first}());\n" +
+                "        }\n" +
+                "        </#if>\n" +
+                "        <#if qf.queryType == 'LIKE_LEFT'>\n" +
+                "        if (StrUtil.isNotBlank(query.get${qf.fieldName?cap_first}())) {\n" +
+                "            wrapper.likeLeft(${className}::get${qf.fieldName?cap_first}, query.get${qf.fieldName?cap_first}());\n" +
+                "        }\n" +
+                "        </#if>\n" +
+                "        <#if qf.queryType == 'LIKE_RIGHT'>\n" +
+                "        if (StrUtil.isNotBlank(query.get${qf.fieldName?cap_first}())) {\n" +
+                "            wrapper.likeRight(${className}::get${qf.fieldName?cap_first}, query.get${qf.fieldName?cap_first}());\n" +
+                "        }\n" +
+                "        </#if>\n" +
+                "        <#if qf.queryType == 'GT'>\n" +
+                "        if (query.get${qf.fieldName?cap_first}() != null) {\n" +
+                "            wrapper.gt(${className}::get${qf.fieldName?cap_first}, query.get${qf.fieldName?cap_first}());\n" +
+                "        }\n" +
+                "        </#if>\n" +
+                "        <#if qf.queryType == 'GTE'>\n" +
+                "        if (query.get${qf.fieldName?cap_first}() != null) {\n" +
+                "            wrapper.ge(${className}::get${qf.fieldName?cap_first}, query.get${qf.fieldName?cap_first}());\n" +
+                "        }\n" +
+                "        </#if>\n" +
+                "        <#if qf.queryType == 'LT'>\n" +
+                "        if (query.get${qf.fieldName?cap_first}() != null) {\n" +
+                "            wrapper.lt(${className}::get${qf.fieldName?cap_first}, query.get${qf.fieldName?cap_first}());\n" +
+                "        }\n" +
+                "        </#if>\n" +
+                "        <#if qf.queryType == 'LTE'>\n" +
+                "        if (query.get${qf.fieldName?cap_first}() != null) {\n" +
+                "            wrapper.le(${className}::get${qf.fieldName?cap_first}, query.get${qf.fieldName?cap_first}());\n" +
+                "        }\n" +
+                "        </#if>\n" +
+                "</#list>\n" +
+                "<#if defaultSortField?? && defaultSortField?length gt 0>\n" +
+                "        wrapper.orderBy<#if defaultSortOrder == 'DESC'>Desc<#else>Asc</#if>(true, ${className}::get${defaultSortField?cap_first});\n" +
+                "</#if>\n" +
+                "        return page(query.getPage(), wrapper);\n" +
+                "    }\n" +
+                "</#if>\n" +
+                "<#if customMethods?? && customMethods?size gt 0>\n" +
+                "<#list customMethods as method>\n" +
+                "\n" +
+                "    @Override\n" +
+                "    public <#if method.methodType == 'SINGLE'>${className} ${method.methodName}(<#list method.params as param>${param.paramType} ${param.paramName}<#if param_has_next>, </#if></#list>)</#if><#if method.methodType == 'LIST'>java.util.List<${className}> ${method.methodName}(<#list method.params as param>${param.paramType} ${param.paramName}<#if param_has_next>, </#if></#list>)</#if><#if method.methodType == 'PAGE'>Page<${className}> ${method.methodName}(<#list method.params as param>${param.paramType} ${param.paramName}<#if param_has_next>, </#if></#list>)</#if><#if method.methodType == 'COUNT'>int ${method.methodName}(<#list method.params as param>${param.paramType} ${param.paramName}<#if param_has_next>, </#if></#list>)</#if><#if method.methodType == 'EXISTS'>boolean ${method.methodName}(<#list method.params as param>${param.paramType} ${param.paramName}<#if param_has_next>, </#if></#list>)</#if><#if method.methodType == 'DELETE'>boolean ${method.methodName}(<#list method.params as param>${param.paramType} ${param.paramName}<#if param_has_next>, </#if></#list>)</#if><#if method.methodType == 'UPDATE'>boolean ${method.methodName}(<#list method.params as param>${param.paramType} ${param.paramName}<#if param_has_next>, </#if></#list>)</#if> {\n" +
+                "        LambdaQueryWrapper<${className}> wrapper = new LambdaQueryWrapper<>();\n" +
+                "<#list method.params as param>\n" +
+                "        wrapper.eq(${className}::get${param.columnName?cap_first}, ${param.paramName});\n" +
+                "</#list>\n" +
+                "        <#if method.methodType == 'SINGLE'>return getOne(wrapper);</#if>\n" +
+                "        <#if method.methodType == 'LIST'>return list(wrapper);</#if>\n" +
+                "        <#if method.methodType == 'PAGE'>return page(new Page<>(), wrapper);</#if>\n" +
+                "        <#if method.methodType == 'COUNT'>return (int) count(wrapper);</#if>\n" +
+                "        <#if method.methodType == 'EXISTS'>return count(wrapper) > 0;</#if>\n" +
+                "        <#if method.methodType == 'DELETE'>return remove(wrapper);</#if>\n" +
+                "        <#if method.methodType == 'UPDATE'>return update(new ${className}(), wrapper);</#if>\n" +
+                "    }\n" +
+                "</#list>\n" +
+                "</#if>\n" +
                 "}\n");
         
         mybatisPlusTemplates.put("controller",
@@ -156,6 +286,9 @@ public class TemplateService {
                 "\n" +
                 "import ${packageName}.entity.${className};\n" +
                 "import ${packageName}.service.${className}Service;\n" +
+                "<#if queryFields?? && queryFields?size gt 0>\n" +
+                "import ${packageName}.query.${className}Query;\n" +
+                "</#if>\n" +
                 "import com.baomidou.mybatisplus.extension.plugins.pagination.Page;\n" +
                 "import org.springframework.web.bind.annotation.*;\n" +
                 "import lombok.RequiredArgsConstructor;\n" +
@@ -173,6 +306,16 @@ public class TemplateService {
                 "    \n" +
                 "    private final ${className}Service ${className?uncap_first}Service;\n" +
                 "    \n" +
+                "<#if queryFields?? && queryFields?size gt 0>\n" +
+                "    /**\n" +
+                "     * 条件分页查询\n" +
+                "     */\n" +
+                "    @GetMapping(\"/page\")\n" +
+                "    public Page<${className}> queryPage(${className}Query query) {\n" +
+                "        return ${className?uncap_first}Service.queryPage(query);\n" +
+                "    }\n" +
+                "\n" +
+                "</#if>\n" +
                 "    /**\n" +
                 "     * 分页查询列表\n" +
                 "     *\n" +
@@ -239,6 +382,11 @@ public class TemplateService {
                 "<#list imports as import>\n" +
                 "import ${import};\n" +
                 "</#list>\n" +
+                "<#if enumConfigs?? && enumConfigs?size gt 0>\n" +
+                "<#list enumConfigs as ec>\n" +
+                "import ${packageName}.enums.${ec.enumName};\n" +
+                "</#list>\n" +
+                "</#if>\n" +
                 "\n" +
                 "/**\n" +
                 " * ${tableComment}\n" +
@@ -253,8 +401,27 @@ public class TemplateService {
                 "    /**\n" +
                 "     * ${column.columnComment!column.fieldName}\n" +
                 "     */\n" +
+                "    <#if enumMap?? && enumMap[column.columnName]??>\n" +
+                "    private ${enumMap[column.columnName]} ${column.fieldName};\n" +
+                "    <#else>\n" +
                 "    private ${column.javaType} ${column.fieldName};\n" +
+                "    </#if>\n" +
                 "</#list>\n" +
+                "<#if relations?? && relations?size gt 0>\n" +
+                "\n" +
+                "    // 关联对象\n" +
+                "<#list relations as rel>\n" +
+                "    /**\n" +
+                "     * 关联${rel.targetTable}\n" +
+                "     */\n" +
+                "    <#if rel.relationType == 'ONE_TO_ONE'>\n" +
+                "    private ${rel.targetTable?cap_first} ${rel.fieldName};\n" +
+                "    </#if>\n" +
+                "    <#if rel.relationType == 'ONE_TO_MANY'>\n" +
+                "    private java.util.List<${rel.targetTable?cap_first}> ${rel.fieldName};\n" +
+                "    </#if>\n" +
+                "</#list>\n" +
+                "</#if>\n" +
                 "}\n");
         
         mybatisTemplates.put("mapper",
@@ -350,6 +517,11 @@ public class TemplateService {
                 "package ${packageName}.service;\n" +
                 "\n" +
                 "import ${packageName}.entity.${className};\n" +
+                "<#if queryFields?? && queryFields?size gt 0>\n" +
+                "import ${packageName}.query.${className}Query;\n" +
+                "import com.github.pagehelper.Page;\n" +
+                "import com.github.pagehelper.PageHelper;\n" +
+                "</#if>\n" +
                 "import java.util.List;\n" +
                 "\n" +
                 "/**\n" +
@@ -369,6 +541,26 @@ public class TemplateService {
                 "     * 查询全部\n" +
                 "     */\n" +
                 "    List<${className}> listAll();\n" +
+                "<#if queryFields?? && queryFields?size gt 0>\n" +
+                "    \n" +
+                "    /**\n" +
+                "     * 分页查询\n" +
+                "     */\n" +
+                "    List<${className}> queryPage(${className}Query query);\n" +
+                "</#if>\n" +
+                "<#if customMethods?? && customMethods?size gt 0>\n" +
+                "<#list customMethods as method>\n" +
+                "    \n" +
+                "    /**\n" +
+                "     * ${method.description!method.methodName}\n" +
+                "     */\n" +
+                "    <#if method.methodType == 'SINGLE'>${className} ${method.methodName}(<#list method.params as param>${param.paramType} ${param.paramName}<#if param_has_next>, </#if></#list>);</#if>\n" +
+                "    <#if method.methodType == 'LIST'>List<${className}> ${method.methodName}(<#list method.params as param>${param.paramType} ${param.paramName}<#if param_has_next>, </#if></#list>);</#if>\n" +
+                "    <#if method.methodType == 'COUNT'>int ${method.methodName}(<#list method.params as param>${param.paramType} ${param.paramName}<#if param_has_next>, </#if></#list>);</#if>\n" +
+                "    <#if method.methodType == 'EXISTS'>boolean ${method.methodName}(<#list method.params as param>${param.paramType} ${param.paramName}<#if param_has_next>, </#if></#list>);</#if>\n" +
+                "    <#if method.methodType == 'DELETE'>boolean ${method.methodName}(<#list method.params as param>${param.paramType} ${param.paramName}<#if param_has_next>, </#if></#list>);</#if>\n" +
+                "</#list>\n" +
+                "</#if>\n" +
                 "    \n" +
                 "    /**\n" +
                 "     * 新增\n" +
@@ -633,6 +825,7 @@ public class TemplateService {
                 "import io.swagger.annotations.ApiModel;\n" +
                 "import io.swagger.annotations.ApiModelProperty;\n" +
                 "</#if>\n" +
+                "import com.baomidou.mybatisplus.extension.plugins.pagination.Page;\n" +
                 "<#if serializable>\n" +
                 "import java.io.Serializable;\n" +
                 "</#if>\n" +
@@ -659,6 +852,36 @@ public class TemplateService {
                 "\n" +
                 "    private static final long serialVersionUID = 1L;\n" +
                 "\n" +
+                "    private Integer pageNum = 1;\n" +
+                "\n" +
+                "    private Integer pageSize = 10;\n" +
+                "\n" +
+                "    private String orderBy;\n" +
+                "\n" +
+                "    private Boolean orderAsc = false;\n" +
+                "\n" +
+                "    public Page<?> getPage() {\n" +
+                "        return new Page<>(pageNum, pageSize);\n" +
+                "    }\n" +
+                "\n" +
+                "<#if queryFields?? && queryFields?size gt 0>\n" +
+                "<#list queryFields as qf>\n" +
+                "    /**\n" +
+                "     * ${qf.fieldName}查询条件\n" +
+                "     */\n" +
+                "    <#if enableSwagger>\n" +
+                "    @ApiModelProperty(value = \"${qf.fieldName}\")\n" +
+                "    </#if>\n" +
+                "    <#if qf.queryType == 'IN' || qf.queryType == 'NOT_IN'>\n" +
+                "    private java.util.List<Object> ${qf.fieldName};\n" +
+                "    <#elseif qf.queryType == 'BETWEEN'>\n" +
+                "    private Object ${qf.fieldName}Start;\n" +
+                "    private Object ${qf.fieldName}End;\n" +
+                "    <#else>\n" +
+                "    private Object ${qf.fieldName};\n" +
+                "    </#if>\n" +
+                "</#list>\n" +
+                "<#else>\n" +
                 "<#list columns as column>\n" +
                 "    /**\n" +
                 "     * ${column.columnComment!column.fieldName}\n" +
@@ -668,6 +891,40 @@ public class TemplateService {
                 "    </#if>\n" +
                 "    private ${column.javaType} ${column.fieldName};\n" +
                 "</#list>\n" +
+                "</#if>\n" +
+                "}\n");
+        
+        commonTemplates.put("enum",
+                "package ${packageName};\n" +
+                "\n" +
+                "import com.baomidou.mybatisplus.annotation.EnumValue;\n" +
+                "import com.fasterxml.jackson.annotation.JsonValue;\n" +
+                "import lombok.Getter;\n" +
+                "\n" +
+                "/**\n" +
+                " * ${enumName} 枚举\n" +
+                " *\n" +
+                " * @author ${author}\n" +
+                " * @date ${date}\n" +
+                " */\n" +
+                "@Getter\n" +
+                "public enum ${enumName} {\n" +
+                "<#if values??>\n" +
+                "<#list values?keys as key>\n" +
+                "    ${values[key]}(${key}<#if descriptions?? && descriptions[key]??>, \"${descriptions[key]}\"</#if>)<#if key_has_next>,<#else>;</#if>\n" +
+                "</#list>\n" +
+                "</#if>\n" +
+                "\n" +
+                "    @EnumValue\n" +
+                "    @JsonValue\n" +
+                "    private final Integer code;\n" +
+                "\n" +
+                "    private final String desc;\n" +
+                "\n" +
+                "    ${enumName}(Integer code, String desc) {\n" +
+                "        this.code = code;\n" +
+                "        this.desc = desc;\n" +
+                "    }\n" +
                 "}\n");
         
         DEFAULT_TEMPLATES.put(TEMPLATE_GROUP_COMMON, commonTemplates);

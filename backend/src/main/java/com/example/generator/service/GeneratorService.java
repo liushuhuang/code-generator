@@ -72,7 +72,9 @@ public class GeneratorService {
             String className = toClassName(tableName, request);
             
             List<ColumnInfo> allColumns = tableInfo.getColumns();
-            Map<String, Object> dataModel = buildDataModel(tableInfo, className, request, allColumns);
+            TableGenerateConfig config = configMap.get(tableName);
+            
+            Map<String, Object> dataModel = buildDataModel(tableInfo, className, request, allColumns, config);
             
             List<String> templateTypes = templateService.getTemplateTypes(ormType);
             
@@ -92,18 +94,23 @@ public class GeneratorService {
                 }
             }
             
-            TableGenerateConfig config = configMap.get(tableName);
             if (config != null) {
                 List<ColumnInfo> selectedColumns = filterColumns(allColumns, config.getSelectedFields());
                 
                 if (config.isGenerateVO()) {
-                    generateExtraFile(results, className, "vo", "VO", request, selectedColumns, tableInfo);
+                    generateExtraFile(results, className, "vo", "VO", request, selectedColumns, tableInfo, config);
                 }
                 if (config.isGenerateDTO()) {
-                    generateExtraFile(results, className, "dto", "DTO", request, selectedColumns, tableInfo);
+                    generateExtraFile(results, className, "dto", "DTO", request, selectedColumns, tableInfo, config);
                 }
                 if (config.isGenerateQuery()) {
-                    generateExtraFile(results, className, "query", "Query", request, selectedColumns, tableInfo);
+                    generateExtraFile(results, className, "query", "Query", request, selectedColumns, tableInfo, config);
+                }
+                
+                if (config.getEnumConfigs() != null && !config.getEnumConfigs().isEmpty()) {
+                    for (EnumConfig enumConfig : config.getEnumConfigs()) {
+                        generateEnumFile(results, className, enumConfig, request);
+                    }
                 }
             }
         }
@@ -111,12 +118,38 @@ public class GeneratorService {
         return results;
     }
     
+    private void generateEnumFile(List<PreviewResult> results, String className, 
+                                   EnumConfig enumConfig, GenerateRequest request) {
+        try {
+            Map<String, Object> dataModel = new HashMap<>();
+            dataModel.put("packageName", request.getBasePackage() + ".enums");
+            dataModel.put("enumName", enumConfig.getEnumName());
+            dataModel.put("values", enumConfig.getValues());
+            dataModel.put("descriptions", enumConfig.getDescriptions());
+            dataModel.put("author", request.getAuthor());
+            dataModel.put("date", new java.text.SimpleDateFormat("yyyy-MM-dd").format(new Date()));
+            
+            String content = templateService.renderExtraTemplate("enum", dataModel);
+            String fileName = enumConfig.getEnumName() + ".java";
+            
+            PreviewResult result = new PreviewResult();
+            result.setFileName(fileName);
+            result.setContent(content);
+            result.setType("enum");
+            result.setTemplateGroup(TemplateService.TEMPLATE_GROUP_COMMON);
+            results.add(result);
+        } catch (Exception e) {
+            log.error("渲染枚举模板失败: {}", enumConfig.getEnumName(), e);
+        }
+    }
+    
     private void generateExtraFile(List<PreviewResult> results, String className, 
                                     String templateName, String suffix,
                                     GenerateRequest request,
-                                    List<ColumnInfo> columns, TableInfo tableInfo) {
+                                    List<ColumnInfo> columns, TableInfo tableInfo,
+                                    TableGenerateConfig config) {
         try {
-            Map<String, Object> dataModel = buildDataModel(tableInfo, className, request, columns);
+            Map<String, Object> dataModel = buildDataModel(tableInfo, className, request, columns, config);
             String content = templateService.renderExtraTemplate(templateName, dataModel);
             String fileName = className + suffix + ".java";
             
@@ -195,7 +228,8 @@ public class GeneratorService {
     
     private Map<String, Object> buildDataModel(TableInfo tableInfo, String className, 
                                                 GenerateRequest request,
-                                                List<ColumnInfo> columns) {
+                                                List<ColumnInfo> columns,
+                                                TableGenerateConfig config) {
         Map<String, Object> dataModel = new HashMap<>();
         dataModel.put("packageName", request.getBasePackage());
         dataModel.put("className", className);
@@ -205,7 +239,6 @@ public class GeneratorService {
         dataModel.put("date", new java.text.SimpleDateFormat("yyyy-MM-dd").format(new Date()));
         dataModel.put("columns", columns);
         
-        // 策略配置
         dataModel.put("enableLombok", Boolean.TRUE.equals(request.getEnableLombok()));
         dataModel.put("enableSwagger", Boolean.TRUE.equals(request.getEnableSwagger()));
         dataModel.put("enableValidation", Boolean.TRUE.equals(request.getEnableValidation()));
@@ -224,7 +257,6 @@ public class GeneratorService {
                 .collect(Collectors.toList());
         dataModel.put("imports", imports);
         
-        // 根据日期类型添加导入
         String dateType = (String) dataModel.get("dateType");
         if ("Date".equals(dateType)) {
             imports.add("java.util.Date");
@@ -238,6 +270,33 @@ public class GeneratorService {
                 .filter(ColumnInfo::getPrimaryKey)
                 .findFirst();
         dataModel.put("primaryKey", pk.orElse(null));
+        
+        if (config != null) {
+            dataModel.put("queryFields", config.getQueryFields() != null ? config.getQueryFields() : new ArrayList<>());
+            dataModel.put("enablePage", config.isEnablePage());
+            dataModel.put("defaultSortField", config.getDefaultSortField());
+            dataModel.put("defaultSortOrder", config.getDefaultSortOrder() != null ? config.getDefaultSortOrder() : "DESC");
+            dataModel.put("customMethods", config.getCustomMethods() != null ? config.getCustomMethods() : new ArrayList<>());
+            dataModel.put("enumConfigs", config.getEnumConfigs() != null ? config.getEnumConfigs() : new ArrayList<>());
+            dataModel.put("relations", config.getRelations() != null ? config.getRelations() : new ArrayList<>());
+            
+            Map<String, String> enumMap = new HashMap<>();
+            if (config.getEnumConfigs() != null) {
+                for (EnumConfig ec : config.getEnumConfigs()) {
+                    enumMap.put(ec.getColumnName(), ec.getEnumName());
+                }
+            }
+            dataModel.put("enumMap", enumMap);
+        } else {
+            dataModel.put("queryFields", new ArrayList<>());
+            dataModel.put("enablePage", true);
+            dataModel.put("defaultSortField", null);
+            dataModel.put("defaultSortOrder", "DESC");
+            dataModel.put("customMethods", new ArrayList<>());
+            dataModel.put("enumConfigs", new ArrayList<>());
+            dataModel.put("relations", new ArrayList<>());
+            dataModel.put("enumMap", new HashMap<>());
+        }
         
         return dataModel;
     }
@@ -290,6 +349,8 @@ public class GeneratorService {
                 return className + "DTO.java";
             case "query":
                 return className + "Query.java";
+            case "enum":
+                return className + ".java";
             default:
                 return className + ".java";
         }
@@ -316,6 +377,8 @@ public class GeneratorService {
                 return pkgPath + "/dto";
             case "query":
                 return pkgPath + "/query";
+            case "enum":
+                return pkgPath + "/enums";
             default:
                 return pkgPath;
         }

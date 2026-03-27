@@ -5,6 +5,10 @@
         <span class="logo-text">Code Generator</span>
       </div>
       <div class="header-actions">
+        <el-button @click="$router.push('/sql-builder')">
+          <el-icon><Edit /></el-icon>
+          SQL构建器
+        </el-button>
         <el-dropdown trigger="click">
           <el-button>
             <el-icon><Download /></el-icon>
@@ -286,6 +290,13 @@ interface TableConfig {
   generateVO: boolean
   generateDTO: boolean
   generateQuery: boolean
+  queryFields: any[]
+  enablePage: boolean
+  defaultSortField: string
+  defaultSortOrder: string
+  customMethods: any[]
+  enumConfigs: any[]
+  relations: any[]
 }
 
 const formRef = ref<FormInstance>()

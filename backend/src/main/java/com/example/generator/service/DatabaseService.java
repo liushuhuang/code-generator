@@ -3,6 +3,7 @@ package com.example.generator.service;
 import com.example.generator.model.ColumnInfo;
 import com.example.generator.model.ConnectionConfig;
 import com.example.generator.model.TableInfo;
+import com.example.generator.model.TableRelation;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -103,6 +104,31 @@ public class DatabaseService {
         }
         
         return columns;
+    }
+    
+    public List<TableRelation> getTableRelations(ConnectionConfig config, String tableName) {
+        String url = buildUrl(config);
+        List<TableRelation> relations = new ArrayList<>();
+        
+        try (Connection conn = DriverManager.getConnection(url, config.getUsername(), config.getPassword())) {
+            DatabaseMetaData metaData = conn.getMetaData();
+            
+            ResultSet importedKeys = metaData.getImportedKeys(config.getDatabase(), null, tableName);
+            while (importedKeys.next()) {
+                TableRelation relation = new TableRelation();
+                relation.setSourceColumn(importedKeys.getString("FKCOLUMN_NAME"));
+                relation.setTargetTable(importedKeys.getString("PKTABLE_NAME"));
+                relation.setTargetColumn(importedKeys.getString("PKCOLUMN_NAME"));
+                relation.setRelationType(TableRelation.TYPE_ONE_TO_ONE);
+                relation.setFieldName(toCamelCase(relation.getTargetTable()));
+                relations.add(relation);
+            }
+            
+        } catch (SQLException e) {
+            log.error("获取外键关系失败", e);
+        }
+        
+        return relations;
     }
     
     private String buildUrl(ConnectionConfig config) {

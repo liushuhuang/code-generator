@@ -25,6 +25,11 @@
   - 移除表前缀（如 `t_`, `sys_`，支持多个）
   - 实体类前缀/后缀
 
+### SQL 构建器
+- **批量操作**：批量插入、批量插入或更新、批量更新、批量删除
+- **入参配置**：List\<Entity\>、List\<DTO\>、基础类型参数
+- **代码生成**：自动生成 Mapper 接口方法、XML SQL、DTO 类
+
 ## 技术栈
 
 ### 后端
@@ -51,19 +56,22 @@ code-generator/
 │   │   │   ├── DatabaseController     # 数据库操作
 │   │   │   ├── GeneratorController    # 代码生成
 │   │   │   ├── TemplateController     # 模板管理
-│   │   │   └── ConfigController       # 配置导入导出
+│   │   │   ├── ConfigController       # 配置导入导出
+│   │   │   └── SqlBuilderController   # SQL构建器
 │   │   ├── service/                   # 业务服务
 │   │   │   ├── DatabaseService        # 数据库服务
 │   │   │   ├── GeneratorService       # 生成服务
 │   │   │   ├── TemplateService        # 模板服务
-│   │   │   └── ConfigService          # 配置服务
+│   │   │   ├── ConfigService          # 配置服务
+│   │   │   └── SqlBuilderService      # SQL构建服务
 │   │   ├── model/                     # 数据模型
 │   │   │   ├── ConnectionConfig       # 连接配置
 │   │   │   ├── TableInfo              # 表信息
 │   │   │   ├── ColumnInfo             # 列信息
-│   │   │   ├── GeneratorSettings      # 生成设置
+│   │   │   ├── GeneratorConfig        # 生成配置
 │   │   │   ├── GenerateRequest        # 生成请求
-│   │   │   └── TableGenerateConfig    # 表生成配置
+│   │   │   ├── TableGenerateConfig    # 表生成配置
+│   │   │   └── SqlBuilderConfig       # SQL构建配置
 │   │   └── common/                    # 公共组件
 │   └── src/main/resources/
 │       └── templates/                 # 代码模板
@@ -74,7 +82,8 @@ code-generator/
 ├── frontend/                          # 前端项目
 │   ├── src/
 │   │   ├── views/
-│   │   │   └── Home.vue               # 主页面
+│   │   │   ├── Home.vue               # 主页面
+│   │   │   └── SqlBuilder.vue         # SQL构建器
 │   │   └── components/
 │   │       ├── PreviewArea.vue        # 预览区域
 │   │       └── FieldConfigDialog.vue  # 字段配置弹窗
@@ -182,6 +191,36 @@ npm run dev
 - **导出配置**：将所有连接和设置导出为 JSON 文件
 - **导入配置**：从 JSON 文件恢复配置
 
+### 7. SQL 构建器
+
+点击顶部「SQL构建器」按钮，进入独立的 SQL 构建模块，用于生成复杂的 MyBatis XML SQL。
+
+#### 支持的操作类型
+
+| 类型 | 说明 |
+|------|------|
+| 批量插入 | INSERT INTO ... VALUES (...), (...) |
+| 批量插入或更新 | ON DUPLICATE KEY UPDATE ... |
+| 批量更新 | CASE WHEN 或 foreach 多条 UPDATE |
+| 批量删除 | DELETE FROM ... WHERE id IN (...) |
+
+#### 入参类型
+
+- **List\<Entity\>**：使用实体类作为参数
+- **List\<DTO\>**：自动生成 DTO 类
+- **基础类型参数**：如 `List<Long> ids`
+
+#### 使用步骤
+
+1. **基础信息**：选择数据库连接、目标表、填写方法名
+2. **入参配置**：选择入参类型和字段
+3. **SQL配置**：配置插入/更新/删除字段
+4. **预览生成**：查看生成的 Mapper 接口和 XML SQL
+
+点击右上角「导入/导出」按钮：
+- **导出配置**：将所有连接和设置导出为 JSON 文件
+- **导入配置**：从 JSON 文件恢复配置
+
 ## API 接口
 
 ### 连接管理
@@ -218,6 +257,13 @@ npm run dev
 |------|------|------|
 | `/api/config/export` | GET | 导出配置 |
 | `/api/config/import` | POST | 导入配置 |
+
+### SQL 构建器
+| 接口 | 方法 | 说明 |
+|------|------|------|
+| `/api/sql-builder/preview` | POST | 预览生成的 SQL |
+| `/api/sql-builder/table-fields` | GET | 获取表字段列表 |
+| `/api/sql-builder/connections` | GET | 获取连接列表 |
 
 ## 模板变量
 
